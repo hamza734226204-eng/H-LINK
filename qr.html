@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Scanner</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container qr-page">
+        <h2>🔐 Secure QR Scanner</h2>
+        <p>Scan the QR code to verify your identity</p>
+        
+        <div id="qr-reader" style="width:300px;margin:20px auto;"></div>
+        
+        <div class="permission-screen hidden" id="permissionScreen">
+            <div class="warning-icon">⚠️</div>
+            <h2>Camera Access Required</h2>
+            <p>This QR scanner needs camera access to verify your code.</p>
+            <button onclick="requestPermissions()" class="btn-primary">Allow Camera</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>

