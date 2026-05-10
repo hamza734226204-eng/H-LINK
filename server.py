@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CairoSpy V1.1 - Optimized for Render/Railway/Hosting
+CairoSpy V1.1 - Optimized for Render/Railway with waitress
 Ethical Hacking Tool - Authorized Use Only
 """
 
@@ -10,7 +10,6 @@ import base64
 import threading
 import time
 import socket
-import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_socketio import SocketIO, emit
@@ -19,12 +18,8 @@ from flask_socketio import SocketIO, emit
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'cairopy_sec_2024')
 
-# استخدام Redis للحفاظ على WebSocket إن وجد (اختياري)
-redis_url = os.environ.get('REDIS_URL')
-if redis_url:
-    socketio = SocketIO(app, cors_allowed_origins="*", message_queue=redis_url)
-else:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# SocketIO بدون async_mode مع waitress
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # مجلد التخزين
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -202,7 +197,7 @@ def health_check():
 if __name__ == '__main__':
     print("""
 ╔══════════════════════════════════════╗
-║        CairoSpy V1.1 - Ready         ║
+║     CairoSpy V1.1 - waitress Ready   ║
 ║    Ethical Hacking - Authorized      ║
 ╚══════════════════════════════════════╝
     """)
@@ -224,11 +219,11 @@ if __name__ == '__main__':
     print(f"[+] Health check: /health")
     print("="*50)
     
-    # Check if running on Render/Railway (استخدام WSGI)
-    if os.environ.get('RENDER') or os.environ.get('RAILWAY'):
-        print("[+] Running in production mode (WSGI)")
-        # استخدام socketio.run مع WSGI المناسب للمضيفين
-        socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+    # استخدام waitress إذا كان في بيئة إنتاج
+    if os.environ.get('RENDER') or os.environ.get('RAILWAY') or os.environ.get('PRODUCTION'):
+        print("[+] Production mode: using waitress")
+        from waitress import serve
+        serve(app, host=host, port=port)
     else:
-        print("[+] Running in development mode")
+        print("[+] Development mode: using Flask built-in")
         socketio.run(app, host=host, port=port, debug=True)
