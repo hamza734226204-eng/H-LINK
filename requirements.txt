@@ -1,6 +1,3 @@
 flask
-flask-socketio
 requests
-gunicorn
-gevent
-gevent-websocket
+waitress
